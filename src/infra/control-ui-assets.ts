@@ -4,6 +4,29 @@ import { runCommandWithTimeout } from "../process/exec.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import { resolveOpenClawPackageRoot } from "./openclaw-root.js";
 
+// +++ 新增：添加 findPackageRoot 函数用于查找最近的 package.json 所在目录
+function findPackageRoot(startPath: string): string | null {
+  let current = path.resolve(startPath);
+  // 如果 startPath 是文件，则从它的目录开始
+  if (fs.existsSync(current) && !fs.statSync(current).isDirectory()) {
+    current = path.dirname(current);
+  }
+
+  for (let i = 0; i < 10; i++) {
+    const pkgPath = path.join(current, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  return null;
+}
+// --- 新增结束
+
 export function resolveControlUiRepoRoot(
   argv1: string | undefined = process.argv[1],
 ): string | null {
@@ -51,6 +74,14 @@ export async function resolveControlUiDistIndexPath(
   if (path.basename(distDir) === "dist") {
     return path.join(distDir, "control-ui", "index.html");
   }
+
+  // +++ 新增：回退逻辑 - 检查相对于 package.json 位置（针对全局安装或非标准路径）
+  const pkgDir = findPackageRoot(normalized); // 查找最近的 package.json
+  if (pkgDir) {
+    const fallbackIndex = path.join(pkgDir, "dist", "control-ui", "index.html");
+    if (fs.existsSync(fallbackIndex)) return fallbackIndex;
+  }
+  // --- 新增结束
 
   const packageRoot = await resolveOpenClawPackageRoot({ argv1: normalized });
   if (!packageRoot) {
